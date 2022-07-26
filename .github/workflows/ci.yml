@@ -27,7 +27,7 @@ jobs:
       - name: Report image
         with:
           CF_IMAGE: ${{ env.CF_IMAGE }}
-          CF_HOST: "https://mr-5f04515c6f790a046303eb5a-d0a662e.cf-cd.com"
+          CF_HOST: "https://mr-62dfaa1ce9d373a06a6fe932-bdaf381.cf-cd.com"
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CF_CONTAINER_REGISTRY_INTEGRATION: "docker"
           CF_JIRA_INTEGRATION: "jira"
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout csdp-salesdemo_applications
         uses: actions/checkout@v3
         with:
-          repository: idan-codefresh/canary-rollout # change to real repo
+          repository: razielt77/canary-rollout # change to real repo
           path: .
       - name: Update application version
         run: |
