@@ -29,7 +29,7 @@ jobs:
           CF_IMAGE: ${{ env.CF_IMAGE }}
           CF_HOST: "https://mr-62dfaa1ce9d373a06a6fe932-bdaf381.cf-cd.com"
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          CF_CONTAINER_REGISTRY_INTEGRATION: "docker"
+          CF_CONTAINER_REGISTRY_INTEGRATION: "dockerhub"
           CF_JIRA_INTEGRATION: "jira"
           CF_GITHUB_TOKEN: ${{ secrets.PAT }}
           CF_JIRA_MESSAGE: "${{ github.event.head_commit.message }}"
