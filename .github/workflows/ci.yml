@@ -35,7 +35,7 @@ jobs:
           CF_API_KEY: ${{secrets.CF2_API_KEY}}
 
           # The name of the runtime that will perform the enrichment. All Integrations must configured on this runtime
-          CF_RUNTIME_NAME: 'idan-ingress'
+          CF_RUNTIME_NAME: 'idan-helm'
 
           # Image reported and enriched in Codefresh. Pass the [account-name]/[image-name]:[tag] built in your CI.
           CF_IMAGE: ${{env.CF_IMAGE}}
