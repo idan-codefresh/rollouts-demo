@@ -32,7 +32,7 @@ jobs:
         with:
           # Codefresh token used to perform authentication with your account.  It is recommended to store as a secret variable. !! Committing a plain text token is a security risk. We highly recommend using encrypted secrets. !!
           # Documentation - https://docs.github.com/en/actions/security-guides/encrypted-secrets
-          CF_API_KEY: ${{secrets.CF2_API_KEY}}
+          CF_API_KEY: ${{secrets.CF3_API}}
 
           # The name of the runtime that will perform the enrichment. All Integrations must configured on this runtime
           CF_RUNTIME_NAME: 'idan-helm'
