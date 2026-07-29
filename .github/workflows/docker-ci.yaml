@@ -107,6 +107,10 @@ jobs:
       - name: enrich image with jira info
         working-directory: /app/
         run: |
+          # jira-connector sends GET requests with an empty JSON body ('{}'),
+          # which Atlassian's CloudFront rejects with 403 "Bad request".
+          # Patch its makeRequest to strip the body from GETs.
+          sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
           # Scan the real branch name for the CR-<number> issue key.
           if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
             export "MESSAGE=${{ github.head_ref }}"
