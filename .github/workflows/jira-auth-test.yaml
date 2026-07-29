@@ -1,0 +1,26 @@
+name: jira-auth-test
+
+# Temporary diagnostic - prints only HTTP status codes, never credentials.
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      JIRA_HOST: ${{ secrets.JIRA_HOST }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+    steps:
+      - name: Check Jira auth from runner
+        run: |
+          echo "host length: ${#JIRA_HOST}, email length: ${#JIRA_EMAIL}, token length: ${#JIRA_API_TOKEN}"
+          echo "== /rest/api/2/myself with basic auth:"
+          curl -s -o /tmp/myself.json -w '%{http_code}\n' -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" "https://${JIRA_HOST}/rest/api/2/myself"
+          echo "== /rest/api/2/issue/CR-41180 with basic auth:"
+          curl -s -o /tmp/issue.json -w '%{http_code}\n' -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" "https://${JIRA_HOST}/rest/api/2/issue/CR-41180"
+          echo "== /rest/api/2/myself with NO auth (WAF test):"
+          curl -s -o /tmp/anon.json -w '%{http_code}\n' "https://${JIRA_HOST}/rest/api/2/myself"
+          echo "== response types:"
+          head -c 80 /tmp/myself.json; echo
+          head -c 80 /tmp/anon.json; echo
