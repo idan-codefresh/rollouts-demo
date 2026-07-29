@@ -20,22 +20,21 @@ on:
       - master
 
 jobs:
+  # The image URI contains the DOCKERHUB_USERNAME secret, so it cannot be passed
+  # as a job output (GitHub skips outputs containing secrets). Only the version
+  # is passed; each CSDP job rebuilds the identical URI from the same expression:
+  #   docker.io/<DOCKERHUB_USERNAME>/<repo-name>:<version>
   build:
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.image.outputs.image }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Compute image URI
-        id: image
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          VERSION=$(cat service.yaml)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "image=docker.io/${DOCKERHUB_USERNAME}/${{ github.event.repository.name }}:${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Read version
+        id: version
+        run: echo "version=$(cat service.yaml)" >> "$GITHUB_OUTPUT"
 
       - name: Login to DockerHub
         uses: docker/login-action@v2
@@ -44,11 +43,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build & push the Docker image
+        env:
+          IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ steps.version.outputs.version }}
         run: |
           docker build . --file Dockerfile \
-            --build-arg COLOR=${{ steps.image.outputs.version }} \
-            --tag ${{ steps.image.outputs.image }}
-          docker push ${{ steps.image.outputs.image }}
+            --build-arg COLOR=${{ steps.version.outputs.version }} \
+            --tag "$IMAGE"
+          docker push "$IMAGE"
 
   # Step 1 - create the image entity in Codefresh and report Docker + Git info.
   # Normally uses a runtime-issued token; here CF3_API serves both roles.
@@ -58,7 +59,7 @@ jobs:
     container:
       image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main
     env:
-      IMAGE_URI: ${{ needs.build.outputs.image }}
+      IMAGE_URI: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
       CF_API_KEY: ${{ secrets.CF3_API }}
       CF_HOST: https://g.codefresh.io
       GIT_BRANCH: ${{ github.ref_name }}
@@ -90,7 +91,7 @@ jobs:
     container:
       image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main
     env:
-      IMAGE: ${{ needs.build.outputs.image }}
+      IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
       CF_API_KEY: ${{ secrets.CF3_API }}
       MESSAGE: ${{ github.ref_name }}
       JIRA_PROJECT_PREFIX: 'CR'
@@ -119,7 +120,7 @@ jobs:
     container:
       image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main
     env:
-      IMAGE_SHA: ${{ needs.build.outputs.image }}
+      IMAGE_SHA: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
       CF_API_KEY: ${{ secrets.CF3_API }}
       BRANCH: ${{ github.head_ref }}
       REPO: ${{ github.repository }}
