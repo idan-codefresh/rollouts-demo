@@ -21,6 +21,6 @@ jobs:
           curl -s -o /tmp/issue.json -w '%{http_code}\n' -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" "https://${JIRA_HOST}/rest/api/2/issue/CR-41180"
           echo "== /rest/api/2/myself with NO auth (WAF test):"
           curl -s -o /tmp/anon.json -w '%{http_code}\n' "https://${JIRA_HOST}/rest/api/2/myself"
-          echo "== response types:"
-          head -c 80 /tmp/myself.json; echo
-          head -c 80 /tmp/anon.json; echo
+          echo "== issue fetch WITHOUT User-Agent header (mimics old node 'request' lib):"
+          curl -s -o /tmp/noua.json -w '%{http_code}\n' -H 'User-Agent:' -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" "https://${JIRA_HOST}/rest/api/2/issue/CR-41180"
+          head -c 120 /tmp/noua.json; echo
