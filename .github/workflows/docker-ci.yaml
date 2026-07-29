@@ -11,13 +11,14 @@ name: docker-ci-csdp-legacy
 #   JIRA_EMAIL          - Jira account email tied to JIRA_API_TOKEN
 #   JIRA_API_TOKEN      - Atlassian API token
 
+# Runs once per merged PR. The pull_request:closed trigger (rather than push)
+# keeps PR context available for the github-info enricher.
 on:
-  push:
-    branches:
-      - master
   pull_request:
     branches:
       - master
+    types:
+      - closed
 
 jobs:
   # The image URI contains the DOCKERHUB_USERNAME secret, so it cannot be passed
@@ -25,6 +26,9 @@ jobs:
   # is passed; each CSDP job rebuilds the identical URI from the same expression:
   #   docker.io/<DOCKERHUB_USERNAME>/<repo-name>:<version>
   build:
+    # Only on actual merge - not on PRs closed without merging.
+    # All downstream jobs are skipped automatically when this is skipped.
+    if: ${{ github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -112,11 +116,10 @@ jobs:
           node /app/src/index.js
 
   # Step 3 - annotate the image entity with PR/commit/committer data.
-  # Only meaningful on pull_request events. Runs in parallel with step 2.
+  # Runs in parallel with step 2.
   csdp-image-enricher-github-info:
     runs-on: ubuntu-latest
     needs: [build, csdp-report-image-info]
-    if: ${{ github.event_name == 'pull_request' }}
     container:
       image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main
     env:
