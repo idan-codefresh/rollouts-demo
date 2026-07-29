@@ -49,15 +49,19 @@ jobs:
             }).on('error', (e) => { console.log('error:', e.message); process.exit(1); });
           "
 
-      - name: jira-connector with FAKE creds + http debug
+      - name: jira-connector with FAKE creds - unpatched vs patched
         working-directory: /app/
-        env:
-          NODE_DEBUG: http
         run: |
-          node -e "
+          PROBE="
             const JiraClient = require('jira-connector');
             const c = new JiraClient({ host: process.env.JIRA_HOST, basic_auth: { email: 'fake@example.com', api_token: 'fake-token' } });
             c.issue.getIssue({ issueKey: 'CR-41180' })
               .then((r) => console.log('OK:', JSON.stringify(r).slice(0, 150)))
-              .catch((e) => console.log('ERR:', String(e).slice(0, 400)));
-          " 2>&1 | grep -viE 'authorization' | head -40
+              .catch((e) => console.log('ERR:', String(e).slice(0, 200)));
+          "
+          echo "== unpatched (expect CloudFront 403 HTML):"
+          node -e "$PROBE"
+          echo "== patching: strip body from GET requests =="
+          sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
+          echo "== patched (expect Jira JSON error, not CloudFront):"
+          node -e "$PROBE"
