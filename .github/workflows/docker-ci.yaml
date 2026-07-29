@@ -1,0 +1,131 @@
+name: docker-ci-csdp-legacy
+
+# Builds the image, then reports/enriches it in Codefresh using the legacy
+# CSDP argo-hub steps (0.0.6) run as containers — NOT the codefresh-report-image action.
+#
+# Required repository secrets:
+#   DOCKERHUB_USERNAME  - Docker Hub user (also the image namespace) [existing]
+#   DOCKERHUB_TOKEN     - Docker Hub token/password [existing]
+#   CF3_API             - Codefresh API key, used for all CSDP steps [existing]
+#   JIRA_HOST           - e.g. acme.atlassian.net (no protocol, no trailing slash)
+#   JIRA_EMAIL          - Jira account email tied to JIRA_API_TOKEN
+#   JIRA_API_TOKEN      - Atlassian API token
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Compute image URI
+        id: image
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          VERSION=$(cat service.yaml)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=docker.io/${DOCKERHUB_USERNAME}/${{ github.event.repository.name }}:${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push the Docker image
+        run: |
+          docker build . --file Dockerfile \
+            --build-arg COLOR=${{ steps.image.outputs.version }} \
+            --tag ${{ steps.image.outputs.image }}
+          docker push ${{ steps.image.outputs.image }}
+
+  # Step 1 - create the image entity in Codefresh and report Docker + Git info.
+  # Normally uses a runtime-issued token; here CF3_API serves both roles.
+  csdp-report-image-info:
+    runs-on: ubuntu-latest
+    needs: [build]
+    container:
+      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main
+    env:
+      IMAGE_URI: ${{ needs.build.outputs.image }}
+      CF_API_KEY: ${{ secrets.CF3_API }}
+      CF_HOST: https://g.codefresh.io
+      GIT_BRANCH: ${{ github.ref_name }}
+      GIT_REVISION: ${{ github.sha }}
+      GIT_COMMIT_MESSAGE: ${{ github.event.head_commit.message || github.event.pull_request.title }}
+      GIT_COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+      GIT_SENDER_LOGIN: ${{ github.actor }}
+      WORKFLOW_NAME: ${{ github.workflow }}
+      WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/${{ github.workflow }}
+      LOGS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - name: report image info
+        working-directory: /usr/src/app
+        run: |
+          # On pull_request, ref_name is "<pr-number>/merge" - use the real branch.
+          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
+            export "GIT_BRANCH=${{ github.head_ref }}"
+          else
+            export "GIT_BRANCH=${{ github.ref_name }}"
+          fi
+          node /usr/src/app/index.js
+
+  # Step 2 - annotate the image entity with Jira issue data.
+  csdp-image-enricher-jira-info:
+    runs-on: ubuntu-latest
+    needs: [build, csdp-report-image-info]
+    container:
+      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+      CF_API_KEY: ${{ secrets.CF3_API }}
+      MESSAGE: ${{ github.ref_name }}
+      JIRA_PROJECT_PREFIX: 'CR'
+      JIRA_HOST: ${{ secrets.JIRA_HOST }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      FAIL_ON_NOT_FOUND: 'false'
+    steps:
+      - name: enrich image with jira info
+        working-directory: /app/
+        run: |
+          # Scan the real branch name for the CR-<number> issue key.
+          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
+            export "MESSAGE=${{ github.head_ref }}"
+          else
+            export "MESSAGE=${{ github.ref_name }}"
+          fi
+          node /app/src/index.js
+
+  # Step 3 - annotate the image entity with PR/commit/committer data.
+  # Only meaningful on pull_request events. Runs in parallel with step 2.
+  csdp-image-enricher-github-info:
+    runs-on: ubuntu-latest
+    needs: [build, csdp-report-image-info]
+    if: ${{ github.event_name == 'pull_request' }}
+    container:
+      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main
+    env:
+      IMAGE_SHA: ${{ needs.build.outputs.image }}
+      CF_API_KEY: ${{ secrets.CF3_API }}
+      BRANCH: ${{ github.head_ref }}
+      REPO: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ github.token }}
+      GIT_SENDER_LOGIN: ${{ github.actor }}
+    steps:
+      - name: enrich image with github info
+        working-directory: /app/
+        run: node /app/src/index.js
