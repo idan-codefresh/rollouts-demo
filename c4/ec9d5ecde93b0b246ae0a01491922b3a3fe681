@@ -1,0 +1,19 @@
+.github/workflows/jira-auth-test.yaml
+  s_3c9fc360a9f472::t_75707f455613d7 1-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "c4ec9d5ecde93b0b246ae0a01491922b3a3fe681",
+  "prompts": {},
+  "sessions": {
+    "s_3c9fc360a9f472": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7315bc46-7fb0-483d-a4b5-faf69603006f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Idan Arbel <idan.arbel@codefresh.io>"
+    }
+  }
+}
