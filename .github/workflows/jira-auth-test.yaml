@@ -48,3 +48,16 @@ jobs:
               res.on('end', () => console.log('body starts:', b.slice(0, 120)));
             }).on('error', (e) => { console.log('error:', e.message); process.exit(1); });
           "
+
+      - name: jira-connector with FAKE creds + http debug
+        working-directory: /app/
+        env:
+          NODE_DEBUG: http
+        run: |
+          node -e "
+            const JiraClient = require('jira-connector');
+            const c = new JiraClient({ host: process.env.JIRA_HOST, basic_auth: { email: 'fake@example.com', api_token: 'fake-token' } });
+            c.issue.getIssue({ issueKey: 'CR-41180' })
+              .then((r) => console.log('OK:', JSON.stringify(r).slice(0, 150)))
+              .catch((e) => console.log('ERR:', String(e).slice(0, 400)));
+          " 2>&1 | grep -viE 'authorization' | head -40
