@@ -24,3 +24,27 @@ jobs:
           echo "== issue fetch WITHOUT User-Agent header (mimics old node 'request' lib):"
           curl -s -o /tmp/noua.json -w '%{http_code}\n' -H 'User-Agent:' -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" "https://${JIRA_HOST}/rest/api/2/issue/CR-41180"
           head -c 120 /tmp/noua.json; echo
+
+  # Same request, but issued from the enricher container's own Node 14 runtime.
+  # No credentials needed - we only compare anonymous responses:
+  # curl-anon got 401 JSON; if this gets 403 CloudFront HTML, the container's
+  # TLS fingerprint is what Atlassian blocks.
+  test-container-node:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main
+    env:
+      JIRA_HOST: ${{ secrets.JIRA_HOST }}
+    steps:
+      - name: Anonymous request from container Node runtime
+        run: |
+          node -e "
+            console.log('node version:', process.version);
+            const https = require('https');
+            https.get({ host: process.env.JIRA_HOST, path: '/rest/api/2/myself' }, (res) => {
+              console.log('status:', res.statusCode);
+              let b = '';
+              res.on('data', (c) => b += c);
+              res.on('end', () => console.log('body starts:', b.slice(0, 120)));
+            }).on('error', (e) => { console.log('error:', e.message); process.exit(1); });
+          "
