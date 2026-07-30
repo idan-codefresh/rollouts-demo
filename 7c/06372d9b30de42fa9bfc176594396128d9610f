@@ -1,0 +1,21 @@
+.github/workflows/docker-ci.yaml
+  s_de7e32d9c706de::t_6edea4f41357be 3-10,64-66,72-80,82-86,89-90,96-106,108-113,122-135
+service.yaml
+  s_de7e32d9c706de::t_0fef18b10b3799 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "7c06372d9b30de42fa9bfc176594396128d9610f",
+  "prompts": {},
+  "sessions": {
+    "s_de7e32d9c706de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a560a02f-1133-4698-aa6c-f736aee39117",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Idan Arbel <idan.arbel@codefresh.io>"
+    }
+  }
+}
