@@ -1,99 +1,71 @@
 # Migration guide: from `codefresh-report-image` to standalone CSDP enrichment steps
 
-## Who needs this
+## Who this guide is for
 
-You need this guide if your CI currently reports images to Codefresh using **any** of these:
+This guide is for you if your CI pipeline currently reports images to Codefresh using either of these:
 
 - The `codefresh-io/codefresh-report-image` GitHub action
-- The image reporting/enrichment templates from the **GitOps Runtime** (the Argo Workflows-based enrichment)
+- The image reporting and enrichment templates from the GitOps Runtime (the Argo Workflows-based enrichment)
 
-**Why:** the Argo Workflows that power image enrichment inside the runtime are being
-**deprecated**. Image reporting keeps working — but it moves out of the runtime and into
-your CI pipeline, as three plain containers you run yourself. No runtime component is
-involved anymore.
+The Argo Workflows that power image enrichment inside the runtime are deprecated. Image reporting keeps working, but it moves out of the runtime and into your CI pipeline as three containers you run yourself. No runtime component is involved anymore.
 
-The result in Codefresh is the same: your images appear in the
-[Images dashboard](https://g.codefresh.io/2.0/images) with Git, Jira, and PR metadata attached.
+The result in Codefresh stays the same: your images appear in the [Images dashboard](https://g.codefresh.io/2.0/images) with Git, Jira, and pull request metadata attached.
 
 ---
 
-## What changes, in one table
+## What changes
 
 | Before (`codefresh-report-image`) | After (standalone steps) |
 | --- | --- |
-| One action/step | **Three** containers: report (mandatory) + Jira enrich (optional) + Git enrich (optional) |
-| `CF_RUNTIME_NAME` selects a runtime | **Gone.** No runtime is used |
-| `CF_CONTAINER_REGISTRY_INTEGRATION` names a Codefresh integration | You pass registry credentials **directly** (e.g. `DOCKER_USERNAME`/`DOCKER_PASSWORD`) |
-| `CF_ISSUE_TRACKING_INTEGRATION` names a Codefresh integration | You pass Jira credentials **directly** (`JIRA_HOST`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) |
-| `CF_IMAGE` | `IMAGE_URI` (step 1) / `IMAGE` (step 2) / `IMAGE_SHA` (step 3) — same value, different names |
-| `CF_GIT_BRANCH` | `GIT_BRANCH` (step 1) / `BRANCH` (step 3) |
-| `CF_JIRA_MESSAGE` | `MESSAGE` (step 2) |
-| `CF_JIRA_PROJECT_PREFIX` | `JIRA_PROJECT_PREFIX` (step 2) |
-| `CF_GITHUB_TOKEN` | `GITHUB_TOKEN` (step 3) |
-| `CF_API_KEY` | `CF_API_KEY` — same key works on all three steps |
+| One action or step | Three containers: report (required), Jira enrichment (optional), and Git enrichment (optional) |
+| `CF_RUNTIME_NAME` selects a runtime | Removed — no runtime is used |
+| `CF_CONTAINER_REGISTRY_INTEGRATION` names a Codefresh integration | You pass registry credentials directly (for example, `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD`) |
+| `CF_ISSUE_TRACKING_INTEGRATION` names a Codefresh integration | You pass Jira credentials directly (`JIRA_HOST_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`) |
+| `CF_IMAGE` | `IMAGE_NAME` — the same variable name in all three steps |
+| `CF_GIT_BRANCH` | `BRANCH` (Git enrichment step) |
+| `CF_JIRA_MESSAGE` | `JIRA_MESSAGE` (Jira enrichment step) |
+| `CF_JIRA_PROJECT_PREFIX` | `JIRA_PROJECT_PREFIX` (Jira enrichment step) |
+| `CF_GITHUB_TOKEN` | `GITHUB_TOKEN` (Git enrichment step) |
+| `CF_API_KEY` | `CF_API_KEY` — the same key works in all three steps |
 
 ## The three steps
 
-| # | Step | Container image | Entrypoint | Required? |
-| --- | --- | --- | --- | --- |
-| 1 | Report image | `quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main` | `node /usr/src/app/index.js` (workdir `/usr/src/app`) | **Yes — always first** |
-| 2 | Jira enrichment | `quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main` | `node /app/src/index.js` (workdir `/app/`) | Optional, after step 1 |
-| 3 | Git/PR enrichment | `quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main` | `node /app/src/index.js` (workdir `/app/`) | Optional, after step 1 |
+| # | Step | Container image | Required |
+| --- | --- | --- | --- |
+| 1 | Report image | `quay.io/codefreshplugins/argo-hub-codefresh-csdp-report-image-info:1.1.30` | Yes — always runs first |
+| 2 | Jira enrichment | `quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-jira-info:1.1.30` | Optional, after step 1 |
+| 3 | Git enrichment | `quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-git-info:1.1.30` | Optional, after step 1 |
 
-Step 1 **creates** the image entity in Codefresh. Steps 2 and 3 **annotate** that entity,
-so they must run after step 1 finishes. Steps 2 and 3 don't depend on each other and may
-run in parallel. Configuration is 100% environment variables — there are no CLI arguments.
+Step 1 creates the image entity in Codefresh. Steps 2 and 3 annotate that entity, so they must run after step 1 finishes. Steps 2 and 3 don't depend on each other and can run in parallel.
 
-## Before you start — collect these credentials
+You configure each step entirely through environment variables — there are no CLI arguments. Each step validates its inputs on startup and fails with a clear `ValidationError` message when a required variable is missing or malformed.
+
+Pin the version tag (`1.1.30`) rather than a floating tag, so your pipeline behavior stays predictable.
+
+## Before you start
+
+Collect these credentials and store them as secrets in your CI system:
 
 | Credential | Where to get it | Used by |
 | --- | --- | --- |
-| Codefresh API key | https://g.codefresh.io/user/settings → API Keys → Generate | All 3 steps (`CF_API_KEY`) |
-| Registry read credentials | Your registry (e.g. Docker Hub username + token) | Step 1 |
-| Jira API token + account email | Atlassian account → Security → API tokens | Step 2 |
-| Git provider token | GitHub: the built-in job token usually suffices | Step 3 |
-
-Store all of these as **secrets** in your CI system. Never hardcode them.
+| Codefresh API key | [User settings](https://g.codefresh.io/user/settings) → API Keys → Generate | All three steps (`CF_API_KEY`) |
+| Registry read credentials | Your registry (for example, a Docker Hub username and access token) | Step 1 |
+| Jira API token and account email | Atlassian account → Security → API tokens | Step 2 |
+| Git provider token | GitHub: the built-in job token is usually enough | Step 3 |
 
 ---
 
-## The 6 golden rules
+## Five rules that prevent hard-to-diagnose failures
 
-Break any of these and you get failures that are hard to diagnose. Read them twice.
+1. **Run the images with their default entrypoint.** The images are distroless — they contain Node.js and the step code, but no shell. This means they can't run as GitHub Actions job containers (`container:`), Codefresh freestyle steps with `commands`, or Jenkins `docker.image(...).inside` blocks, because all of those need a shell inside the image. Instead, run each step with `docker run` (or an equivalent that uses the image's default entrypoint) and pass configuration as environment variables. The examples below show this pattern for each CI system.
 
-1. **The image URI must be byte-identical in all three steps.** Full URI including
-   registry and tag, e.g. `docker.io/myuser/my-app:1.2.3`. If step 2 or 3 gets even a
-   slightly different string, it annotates a nonexistent entity and your data silently
-   goes nowhere. Define it once (one variable/expression) and reuse it.
+2. **The image URI must be identical in all three steps.** Use the full URI including registry and tag, for example `docker.io/myuser/my-app:1.2.3`, and pass it as `IMAGE_NAME` to every step. If step 2 or 3 receives even a slightly different string, it annotates a nonexistent entity and the data goes nowhere. Define the URI once and reuse it.
 
-2. **The variable NAME for the image differs per step.** Step 1: `IMAGE_URI`.
-   Step 2: `IMAGE`. Step 3: `IMAGE_SHA`. Yes, it's inconsistent. No, you can't rename them.
+3. **`JIRA_HOST_URL` is a full URL.** Include the protocol: `https://mycompany.atlassian.net`. The step validates this value as a URL and fails if the protocol is missing.
 
-3. **Always set `CF_HOST=https://g.codefresh.io` on step 1.** The code has **no default** —
-   if you omit it, the step tries to call `undefined/2.0/api/graphql` and fails.
-   (On-prem: use your own Codefresh URL.)
+4. **GitHub Actions: never pass the image URI through a job output if it contains a secret.** If your image path embeds a secret (for example, `${{ secrets.DOCKERHUB_USERNAME }}`), GitHub silently drops the output (`Skip output since it may contain secret`) and the downstream job receives an empty string. Pass only non-secret parts (like the tag) between jobs, and rebuild the full URI in each job's `env`.
 
-4. **Step 2 needs a one-line patch before it runs** (see below). The image's Jira client
-   library sends GET requests with an empty JSON body, which Atlassian's CDN (CloudFront)
-   rejects with an opaque `403 Bad request` HTML page. Run this `sed` command in the
-   container **before** invoking `node /app/src/index.js`:
-
-   ```bash
-   sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
-   ```
-
-   Symptom if you forget: the step logs `body:"<!DOCTYPE HTML ... 403 ERROR ..."` right
-   after `Looking for Issues from message ...` — and (with `FAIL_ON_NOT_FOUND=false`)
-   still exits green, so nothing gets enriched and nothing looks broken.
-
-5. **GitHub Actions only: never pass the image URI through a job output if it contains a
-   secret.** If your image path embeds a secret (e.g. `${{ secrets.DOCKERHUB_USERNAME }}`),
-   GitHub silently drops the output (`Skip output since it may contain secret`) and the
-   downstream step receives an **empty string**. Pass only non-secret parts (like the tag)
-   between jobs and rebuild the full URI in each job's `env`.
-
-6. **`JIRA_HOST` is a bare hostname.** `mycompany.atlassian.net` — no `https://`, no
-   trailing slash, no path.
+5. **Read the logs, not just the exit code, when `FAIL_ON_NOT_FOUND` is `false`.** With the default setting, the Jira step exits successfully even when no issue key matches your message. Configuration errors and API failures always fail the step, but a quiet "no issues detected" only shows in the logs.
 
 ---
 
@@ -103,115 +75,123 @@ Break any of these and you get failures that are hard to diagnose. Read them twi
 
 | Variable | Required | Value |
 | --- | --- | --- |
-| `IMAGE_URI` | ✅ | Full image URI incl. registry and tag |
-| `CF_API_KEY` | ✅ | Codefresh API key |
-| `CF_HOST` | ✅ (see rule 3) | `https://g.codefresh.io` |
-| Registry credentials | ✅ one set | Docker Hub: `DOCKER_USERNAME` + `DOCKER_PASSWORD` · ECR: `AWS_ACCESS_KEY` + `AWS_SECRET_KEY` + `AWS_REGION` · GCR: `GCR_KEY_FILE_PATH` · other: `USERNAME` + `PASSWORD` + `DOMAIN` |
-| `GIT_BRANCH`, `GIT_REVISION`, `GIT_COMMIT_MESSAGE`, `GIT_COMMIT_URL`, `GIT_SENDER_LOGIN` | optional | Git metadata shown on the image |
-| `WORKFLOW_NAME`, `WORKFLOW_URL`, `LOGS_URL` | optional | Links back to your CI run |
+| `IMAGE_NAME` | Yes | Full image URI, including registry and tag |
+| `CF_API_KEY` | Yes | Codefresh API key |
+| Registry credentials | Yes — one set | Docker Hub: `DOCKERHUB_USERNAME` + `DOCKERHUB_PASSWORD` · Amazon ECR: `AWS_ACCESS_KEY` + `AWS_SECRET_KEY` + `AWS_REGION` (or `AWS_ROLE`) · Google: `GOOGLE_REGISTRY_HOST` + `GOOGLE_JSON_KEY`, or `GCR_KEY_FILE_PATH` · Other registries: `REGISTRY_DOMAIN` + `REGISTRY_USERNAME` + `REGISTRY_PASSWORD` (add `REGISTRY_INSECURE=true` for HTTP) · Alternatively: `DOCKER_CONFIG_FILE_PATH` |
+| `CF_HOST_URL` | No | Defaults to `https://g.codefresh.io`. Set it only for Codefresh on-premises |
+| `WORKFLOW_NAME`, `WORKFLOW_URL`, `LOGS_URL` | No | Links from the image entity back to your CI run. Point `WORKFLOW_URL` at the specific run (for example, `.../actions/runs/<run-id>` in GitHub Actions) so the link lands on the exact execution that reported the image |
+| `DOCKERFILE_CONTENT`, `DOCKERFILE_PATH` | No | Attach the Dockerfile to the image entity |
+
+Note: unlike earlier versions, this step no longer accepts Git metadata (`GIT_BRANCH`, `GIT_REVISION`, and similar). All Git data now comes from the Git enrichment step.
 
 ### Step 2 — image-enricher-jira-info
 
 | Variable | Required | Value |
 | --- | --- | --- |
-| `IMAGE` | ✅ | **Exactly** the same URI as step 1's `IMAGE_URI` |
-| `CF_API_KEY` | ✅ | Same Codefresh API key |
-| `MESSAGE` | ✅ | Text to scan for an issue key — branch name or commit message |
-| `JIRA_PROJECT_PREFIX` | ✅ | Your Jira project key, e.g. `CR` (finds `CR-1234` in `MESSAGE`) |
-| `JIRA_HOST` | ✅ | e.g. `mycompany.atlassian.net` (bare host — rule 6) |
-| `JIRA_EMAIL` | ✅ | The Atlassian account email the token belongs to |
-| `JIRA_API_TOKEN` | ✅ | Atlassian API token |
-| `FAIL_ON_NOT_FOUND` | optional | `true` = fail the step when no issue matches (default `false`) |
+| `IMAGE_NAME` | Yes | Exactly the same URI as step 1 |
+| `CF_API_KEY` | Yes | The same Codefresh API key |
+| `JIRA_MESSAGE` | Yes | Text to scan for an issue key — typically the branch name or commit message |
+| `JIRA_PROJECT_PREFIX` | Yes | Your Jira project key, for example `CR` (matches `CR-1234` in `JIRA_MESSAGE`) |
+| Jira authentication | Yes — exactly one method | Jira Cloud: `JIRA_API_TOKEN` + `JIRA_EMAIL` + `JIRA_HOST_URL` · Jira Server/Data Center: `JIRA_SERVER_PAT` + `JIRA_HOST_URL` · Codefresh Jira integration: `JIRA_CONTEXT` |
+| `FAIL_ON_NOT_FOUND` | No | `true` fails the step when no issue matches. Defaults to `false` |
+| `CF_HOST_URL` | No | Defaults to `https://g.codefresh.io` |
+
+The step validates that you set exactly one of `JIRA_API_TOKEN`, `JIRA_SERVER_PAT`, or `JIRA_CONTEXT`, and fails with a clear message otherwise.
 
 ### Step 3 — image-enricher-git-info
 
 | Variable | Required | Value |
 | --- | --- | --- |
-| `IMAGE_SHA` | ✅ | **Exactly** the same URI as step 1's `IMAGE_URI` |
-| `CF_API_KEY` | ✅ | Same Codefresh API key |
-| `BRANCH` | ✅ | The PR's source branch |
-| `REPO` | ✅ | `owner/repo-name` |
-| `GITHUB_TOKEN` | ✅ | Token with read access to the repo's PRs |
-| `GIT_SENDER_LOGIN` | optional | Commit author username |
+| `IMAGE_NAME` | Yes | Exactly the same URI as step 1 |
+| `CF_API_KEY` | Yes | The same Codefresh API key |
+| `GIT_PROVIDER` | Yes | One of `github`, `gitlab`, `bitbucket`, `bitbucket-server`, or `gerrit` |
+| `REPO` | Yes | `owner/repo-name` |
+| `BRANCH` | Yes (except Gerrit) | The pull request's source branch |
+| Provider credentials | Yes | GitHub: `GITHUB_TOKEN` or `GITHUB_CONTEXT` (exactly one) · GitLab: `GITLAB_TOKEN` · Bitbucket: `BITBUCKET_USERNAME` + `BITBUCKET_PASSWORD` · Gerrit: `GERRIT_CHANGE_ID` + `GERRIT_HOST_URL` + `GERRIT_USERNAME` + `GERRIT_PASSWORD` |
+| `GITHUB_API_HOST_URL` | No | Defaults to `https://api.github.com`. Set it for GitHub Enterprise Server |
+| `REVISION` | No | A specific commit SHA to enrich from |
+| `CF_COMMITS_BY_USER_LIMIT` | No | Number of commits to attach. Defaults to 5 |
 
 ---
 
 ## Example 1 — GitHub Actions
 
-Full working workflow: [`.github/workflows/docker-ci.yaml`](.github/workflows/docker-ci.yaml)
-in this repo. Structure: a `build` job builds and pushes the image, then:
+A complete, working workflow lives in this repository: [`.github/workflows/docker-ci.yaml`](.github/workflows/docker-ci.yaml). A `build` job builds and pushes the image, then three jobs run the CSDP steps with `docker run`.
+
+Secrets are set in the step's `env` block and passed to the container with the `-e VAR` pass-through form, so they never appear in a command line.
 
 ```yaml
   csdp-report-image-info:
     runs-on: ubuntu-latest
     needs: [build]
-    container:
-      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main
-    env:
-      IMAGE_URI: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      CF_HOST: https://g.codefresh.io
-      GIT_BRANCH: ${{ github.head_ref }}
-      GIT_REVISION: ${{ github.sha }}
-      GIT_COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-      GIT_SENDER_LOGIN: ${{ github.actor }}
-      DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: report image info
-        working-directory: /usr/src/app
-        run: node /usr/src/app/index.js
+        env:
+          IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          # Link to this specific run so the link in Codefresh lands on the
+          # exact execution that reported the image.
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LOGS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          docker run --rm \
+            -e IMAGE_NAME -e CF_API_KEY \
+            -e WORKFLOW_NAME -e WORKFLOW_URL -e LOGS_URL \
+            -e DOCKERHUB_USERNAME -e DOCKERHUB_PASSWORD \
+            quay.io/codefreshplugins/argo-hub-codefresh-csdp-report-image-info:1.1.30
 
   csdp-image-enricher-jira-info:
     runs-on: ubuntu-latest
     needs: [build, csdp-report-image-info]
-    container:
-      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main
-    env:
-      IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      MESSAGE: ${{ github.head_ref }}
-      JIRA_PROJECT_PREFIX: 'CR'
-      JIRA_HOST: ${{ secrets.JIRA_HOST }}
-      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
-      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-      FAIL_ON_NOT_FOUND: 'false'
     steps:
       - name: enrich image with jira info
-        working-directory: /app/
+        env:
+          IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          JIRA_MESSAGE: ${{ github.head_ref }}
+          JIRA_PROJECT_PREFIX: 'CR'
+          JIRA_HOST_URL: https://${{ secrets.JIRA_HOST }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          FAIL_ON_NOT_FOUND: 'false'
         run: |
-          # Mandatory patch - see golden rule 4
-          sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
-          node /app/src/index.js
+          docker run --rm \
+            -e IMAGE_NAME -e CF_API_KEY \
+            -e JIRA_MESSAGE -e JIRA_PROJECT_PREFIX -e JIRA_HOST_URL \
+            -e JIRA_EMAIL -e JIRA_API_TOKEN \
+            -e FAIL_ON_NOT_FOUND \
+            quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-jira-info:1.1.30
 
   csdp-image-enricher-github-info:
     runs-on: ubuntu-latest
     needs: [build, csdp-report-image-info]
-    container:
-      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main
-    env:
-      IMAGE_SHA: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      BRANCH: ${{ github.head_ref }}
-      REPO: ${{ github.repository }}
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: enrich image with github info
-        working-directory: /app/
-        run: node /app/src/index.js
+        env:
+          IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GIT_PROVIDER: github
+          BRANCH: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          docker run --rm \
+            -e IMAGE_NAME -e CF_API_KEY \
+            -e GIT_PROVIDER -e BRANCH -e REPO -e GITHUB_TOKEN \
+            quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-git-info:1.1.30
 ```
 
-GitHub Actions tips:
+Tips for GitHub Actions:
 
-- Trigger on `pull_request` with `types: [closed]` and gate the build job with
-  `if: github.event.pull_request.merged == true` to run once per merged PR while keeping
-  PR context available (a plain `push` trigger loses `github.head_ref` and PR data).
-- Remember golden rule 5 about job outputs and secrets.
+- Trigger on `pull_request` with `types: [closed]` and gate the build job with `if: github.event.pull_request.merged == true`. This runs the pipeline once per merged pull request while keeping pull request context (like `github.head_ref`) available. A plain `push` trigger loses that context.
+- Remember rule 4 about job outputs and secrets.
 
 ## Example 2 — Codefresh pipeline (classic CI)
 
-The containers run as ordinary freestyle steps. Set the shared image URI once as a
-pipeline variable (`IMAGE_FULL` below) to satisfy golden rule 1.
+Because the images have no shell, omit the `commands` attribute — a freestyle step without `commands` runs the image's default entrypoint, which is exactly what these steps need. Set the shared image URI once as a pipeline variable to satisfy rule 2.
 
 ```yaml
 version: "1.0"
@@ -229,64 +209,45 @@ steps:
   report_image_info:
     title: Report image to Codefresh
     stage: report
-    image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main
-    working_directory: /usr/src/app
+    image: quay.io/codefreshplugins/argo-hub-codefresh-csdp-report-image-info:1.1.30
     environment:
-      - IMAGE_URI=docker.io/myuser/my-app:${{CF_SHORT_REVISION}}
+      - IMAGE_NAME=docker.io/myuser/my-app:${{CF_SHORT_REVISION}}
       - CF_API_KEY=${{CF_API_KEY}}
-      - CF_HOST=https://g.codefresh.io
-      - GIT_BRANCH=${{CF_BRANCH}}
-      - GIT_REVISION=${{CF_REVISION}}
-      - GIT_COMMIT_MESSAGE=${{CF_COMMIT_MESSAGE}}
-      - GIT_COMMIT_URL=${{CF_COMMIT_URL}}
-      - GIT_SENDER_LOGIN=${{CF_COMMIT_AUTHOR}}
-      - DOCKER_USERNAME=${{DOCKERHUB_USERNAME}}
-      - DOCKER_PASSWORD=${{DOCKERHUB_TOKEN}}
-    commands:
-      - node /usr/src/app/index.js
+      - DOCKERHUB_USERNAME=${{DOCKERHUB_USERNAME}}
+      - DOCKERHUB_PASSWORD=${{DOCKERHUB_TOKEN}}
 
   enrich_jira:
     title: Enrich with Jira issue
     stage: enrich
-    image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main
-    working_directory: /app/
+    image: quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-jira-info:1.1.30
     environment:
-      - IMAGE=docker.io/myuser/my-app:${{CF_SHORT_REVISION}}
+      - IMAGE_NAME=docker.io/myuser/my-app:${{CF_SHORT_REVISION}}
       - CF_API_KEY=${{CF_API_KEY}}
-      - MESSAGE=${{CF_BRANCH}}
+      - JIRA_MESSAGE=${{CF_BRANCH}}
       - JIRA_PROJECT_PREFIX=CR
-      - JIRA_HOST=mycompany.atlassian.net
+      - JIRA_HOST_URL=https://mycompany.atlassian.net
       - JIRA_EMAIL=${{JIRA_EMAIL}}
       - JIRA_API_TOKEN=${{JIRA_API_TOKEN}}
       - FAIL_ON_NOT_FOUND=false
-    commands:
-      # Mandatory patch - see golden rule 4
-      - sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
-      - node /app/src/index.js
 
   enrich_git:
     title: Enrich with PR info
     stage: enrich
-    image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main
-    working_directory: /app/
+    image: quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-git-info:1.1.30
     environment:
-      - IMAGE_SHA=docker.io/myuser/my-app:${{CF_SHORT_REVISION}}
+      - IMAGE_NAME=docker.io/myuser/my-app:${{CF_SHORT_REVISION}}
       - CF_API_KEY=${{CF_API_KEY}}
+      - GIT_PROVIDER=github
       - BRANCH=${{CF_BRANCH}}
       - REPO=${{CF_REPO_OWNER}}/${{CF_REPO_NAME}}
       - GITHUB_TOKEN=${{GITHUB_TOKEN}}
-    commands:
-      - node /app/src/index.js
 ```
 
-Store `CF_API_KEY`, `DOCKERHUB_TOKEN`, `JIRA_API_TOKEN`, `GITHUB_TOKEN` etc. as encrypted
-pipeline/project variables.
+Store `CF_API_KEY`, `DOCKERHUB_TOKEN`, `JIRA_API_TOKEN`, `GITHUB_TOKEN`, and similar values as encrypted pipeline or project variables.
 
 ## Example 3 — Jenkins (declarative pipeline)
 
-Run each step inside its container with `docker.image(...).inside`. The `--entrypoint`
-override isn't needed — the images' default command is irrelevant because we invoke
-`node` explicitly.
+Because the images have no shell, `docker.image(...).inside` doesn't work — it needs a shell in the container. Run each step with `docker run` instead, passing environment variables with the `-e VAR` pass-through form so credentials stay out of the command line.
 
 ```groovy
 pipeline {
@@ -313,19 +274,14 @@ pipeline {
       steps {
         withCredentials([
           string(credentialsId: 'cf-api-key', variable: 'CF_API_KEY'),
-          usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')
+          usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKERHUB_USERNAME', passwordVariable: 'DOCKERHUB_PASSWORD')
         ]) {
-          script {
-            docker.image('quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main').inside {
-              sh '''
-                export IMAGE_URI="$IMAGE_FULL"
-                export CF_HOST="https://g.codefresh.io"
-                export GIT_BRANCH="$BRANCH_NAME"
-                export GIT_REVISION="$GIT_COMMIT"
-                cd /usr/src/app && node index.js
-              '''
-            }
-          }
+          sh '''
+            IMAGE_NAME="$IMAGE_FULL" docker run --rm \
+              -e IMAGE_NAME -e CF_API_KEY \
+              -e DOCKERHUB_USERNAME -e DOCKERHUB_PASSWORD \
+              quay.io/codefreshplugins/argo-hub-codefresh-csdp-report-image-info:1.1.30
+          '''
         }
       }
     }
@@ -336,21 +292,19 @@ pipeline {
           string(credentialsId: 'cf-api-key', variable: 'CF_API_KEY'),
           string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')
         ]) {
-          script {
-            docker.image('quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main').inside {
-              sh '''
-                export IMAGE="$IMAGE_FULL"
-                export MESSAGE="$BRANCH_NAME"
-                export JIRA_PROJECT_PREFIX="CR"
-                export JIRA_HOST="mycompany.atlassian.net"
-                export JIRA_EMAIL="jira-bot@mycompany.com"
-                export FAIL_ON_NOT_FOUND="false"
-                # Mandatory patch - see golden rule 4
-                sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
-                cd /app && node src/index.js
-              '''
-            }
-          }
+          sh '''
+            IMAGE_NAME="$IMAGE_FULL" \
+            JIRA_MESSAGE="$BRANCH_NAME" \
+            JIRA_PROJECT_PREFIX="CR" \
+            JIRA_HOST_URL="https://mycompany.atlassian.net" \
+            JIRA_EMAIL="jira-bot@mycompany.com" \
+            FAIL_ON_NOT_FOUND="false" \
+            docker run --rm \
+              -e IMAGE_NAME -e CF_API_KEY \
+              -e JIRA_MESSAGE -e JIRA_PROJECT_PREFIX -e JIRA_HOST_URL \
+              -e JIRA_EMAIL -e JIRA_API_TOKEN -e FAIL_ON_NOT_FOUND \
+              quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-jira-info:1.1.30
+          '''
         }
       }
     }
@@ -361,16 +315,16 @@ pipeline {
           string(credentialsId: 'cf-api-key', variable: 'CF_API_KEY'),
           string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')
         ]) {
-          script {
-            docker.image('quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main').inside {
-              sh '''
-                export IMAGE_SHA="$IMAGE_FULL"
-                export BRANCH="$BRANCH_NAME"
-                export REPO="myorg/my-app"
-                cd /app && node src/index.js
-              '''
-            }
-          }
+          sh '''
+            IMAGE_NAME="$IMAGE_FULL" \
+            GIT_PROVIDER="github" \
+            BRANCH="$BRANCH_NAME" \
+            REPO="myorg/my-app" \
+            docker run --rm \
+              -e IMAGE_NAME -e CF_API_KEY \
+              -e GIT_PROVIDER -e BRANCH -e REPO -e GITHUB_TOKEN \
+              quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-git-info:1.1.30
+          '''
         }
       }
     }
@@ -380,33 +334,52 @@ pipeline {
 
 ---
 
-## How to verify it worked
+## Verify the migration worked
 
-1. **Step 1 logs** should contain `REPORT_IMAGE_V2: binaryQuery response:` followed by a
-   JSON object echoing your image name. That means the entity was created.
-2. **Step 2 logs** should end with `Codefresh assign issue <KEY> to your image <uri>`.
-3. **Step 3 logs** should contain `saveAnnotation` with your PR number and URL.
-4. Open https://g.codefresh.io/2.0/images — your image should show the Git commit,
-   the Jira issue, and the PR.
+1. The report step's logs should end with `image reported successfully`, and the `image_link` output should contain a link to the image entity in Codefresh.
+2. The Jira step's logs should show `detected issues: [<KEY>]` followed by `codefresh assigned issue <KEY> to your gitops image <uri>`.
+3. The Git step's logs should show `image patched` followed by `gitops annotation created`, including your pull request number and URL.
+4. Open the [Images dashboard](https://g.codefresh.io/2.0/images) — your image should show the Git commit, the Jira issue, and the pull request.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `Error: IMAGE_URI is required parameter` | The env var arrived empty | Check how you pass the URI between jobs — in GitHub Actions see golden rule 5 |
-| Step 1 fails with a URL like `undefined/2.0/api/graphql` | `CF_HOST` not set | Set `CF_HOST=https://g.codefresh.io` (rule 3) |
-| Jira step logs `body:"<!DOCTYPE HTML ... 403 ERROR"` | Missing the `sed` patch | Apply the patch from golden rule 4 — the credentials are probably fine |
-| Jira step logs `Issues werent found` | `MESSAGE` doesn't contain `<PREFIX>-<number>` | Pass a branch name / commit message containing the issue key, e.g. `CR-1234-my-fix` |
-| `The image you are trying to enrich ... does not exist` | Image URI mismatch between steps | Make the URI byte-identical everywhere (rule 1) |
-| `Registry credentials is required parameter` | No registry creds given to step 1 | Provide one credential set (see step 1 table) |
-| `401` / auth errors from Codefresh | Bad or wrong-account `CF_API_KEY` | Regenerate at https://g.codefresh.io/user/settings |
-| Enrichment "succeeds" but nothing appears on the image | Jira/Git step targeted a different URI, or Jira step silently hit the 403 above | Check rules 1 and 4; read the step logs, not just the exit code |
+| `exec: "sh": executable file not found in $PATH` | The image is running as a job container, a freestyle step with `commands`, or a Jenkins `inside` block | Run the image with `docker run` and its default entrypoint (rule 1) |
+| `ValidationError: "IMAGE_NAME" is required` (or any other variable) | The environment variable arrived empty | Check how the value reaches the step — in GitHub Actions, see rule 4 |
+| `ValidationError: "JIRA_HOST_URL" must be a valid uri` | The protocol is missing | Include `https://` (rule 3) |
+| `ValidationError` mentioning `JIRA_CONTEXT`, `JIRA_API_TOKEN`, and `JIRA_SERVER_PAT` | More than one, or none, of the Jira authentication methods is set | Set exactly one method (see the step 2 table) |
+| The Jira step succeeds but no issue appears on the image | `JIRA_MESSAGE` doesn't contain `<PREFIX>-<number>`, and `FAIL_ON_NOT_FOUND` is `false` | Pass a branch name or commit message containing the issue key, for example `CR-1234-my-fix`. Check the logs for `detected issues` (rule 5) |
+| `The image you are trying to enrich ... does not exist` | The image URI differs between steps | Make the URI identical everywhere (rule 2) |
+| `401` or authentication errors from Codefresh | An invalid or wrong-account `CF_API_KEY` | Regenerate the key in [User settings](https://g.codefresh.io/user/settings) |
+| Registry errors from the report step | Missing or invalid registry credentials | Provide one complete credential set (see the step 1 table) |
+
+## Upgrading from the 0.0.6 images
+
+If you followed an earlier version of this guide that used the `0.0.6` images, three things changed:
+
+1. **New image names and tags.** Use `quay.io/codefreshplugins/argo-hub-codefresh-csdp-<step>:1.1.30` instead of the `argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-<step>:main` naming.
+2. **No more Jira client patch.** The 1.1.30 Jira step replaced its Jira client library, which fixes the bug where Atlassian's CDN rejected requests with a `403` error. Remove the `sed` workaround from your pipeline.
+3. **Renamed variables.** Update these environment variables:
+
+| Step | 0.0.6 name | 1.1.30 name |
+| --- | --- | --- |
+| Report | `IMAGE_URI` | `IMAGE_NAME` |
+| Report | `CF_HOST` | `CF_HOST_URL` (now optional) |
+| Report | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | `DOCKERHUB_USERNAME` / `DOCKERHUB_PASSWORD` |
+| Report | `DOMAIN` / `USERNAME` / `PASSWORD` / `INSECURE` | `REGISTRY_DOMAIN` / `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` / `REGISTRY_INSECURE` |
+| Report | `GIT_BRANCH`, `GIT_REVISION`, `GIT_COMMIT_MESSAGE`, `GIT_COMMIT_URL`, `GIT_SENDER_LOGIN` | Removed — use the Git enrichment step |
+| Jira | `IMAGE` | `IMAGE_NAME` |
+| Jira | `MESSAGE` | `JIRA_MESSAGE` |
+| Jira | `JIRA_HOST` (bare hostname) | `JIRA_HOST_URL` (full URL with `https://`) |
+| Git | `IMAGE_SHA` | `IMAGE_NAME` |
+| Git | — | `GIT_PROVIDER` (new, required) |
+| Git | `GITHUB_API` | `GITHUB_API_HOST_URL` |
+| Git | `GIT_PROVIDER_NAME` | `GITHUB_CONTEXT` |
 
 ## Reference
 
 - Working example workflow: [`.github/workflows/docker-ci.yaml`](.github/workflows/docker-ci.yaml)
-- Upstream step docs: [report-image-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/0.0.6/docs/report-image-info.md) · [image-enricher-jira-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/0.0.6/docs/image-enricher-jira-info.md) · [image-enricher-git-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/0.0.6/docs/image-enricher-git-info.md)
+- Upstream step documentation: [report-image-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/report-image-info.md) · [image-enricher-jira-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/image-enricher-jira-info.md) · [image-enricher-git-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/image-enricher-git-info.md)
 
-> Note: the upstream docs describe `*_SECRET` / `*_SECRET_KEY` variants for registry
-> credentials. Those are for Kubernetes secrets in Argo Workflows — **not applicable**
-> when running the containers in CI. Pass the values directly as environment variables.
+> Note: the upstream documentation describes `*_SECRET` and `*_SECRET_KEY` variants for credentials. Those apply to Kubernetes secrets in Argo Workflows and don't apply when you run the containers in CI. Pass the values directly as environment variables.
