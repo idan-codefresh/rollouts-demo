@@ -1,0 +1,19 @@
+MIGRATION.md
+  s_de7e32d9c706de::t_54f628e8a74577 203-210,215,229-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "1c3c2315f776a8ac8cc1966d5cfd92f5bd9687c3",
+  "prompts": {},
+  "sessions": {
+    "s_de7e32d9c706de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a560a02f-1133-4698-aa6c-f736aee39117",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Idan Arbel <idan.arbel@codefresh.io>"
+    }
+  }
+}
