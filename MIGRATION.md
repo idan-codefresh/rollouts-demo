@@ -20,7 +20,7 @@ The result in Codefresh stays the same: your images appear in the [Images dashbo
 | One action or step | Three containers: report (required), Jira enrichment (optional), and Git enrichment (optional) |
 | `CF_RUNTIME_NAME` selects a runtime | Removed — no runtime is used |
 | `CF_CONTAINER_REGISTRY_INTEGRATION` names a Codefresh integration | You pass registry credentials directly (for example, `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD`) |
-| `CF_ISSUE_TRACKING_INTEGRATION` names a Codefresh integration | You pass Jira credentials directly (`JIRA_HOST_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`) |
+| `CF_ISSUE_TRACKING_INTEGRATION` names a Codefresh integration | Pass the same integration name as `JIRA_CONTEXT`, or pass Jira credentials directly (`JIRA_HOST_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`) |
 | `CF_IMAGE` | `IMAGE_NAME` — the same variable name in all three steps |
 | `CF_GIT_BRANCH` | `BRANCH` (Git enrichment step) |
 | `CF_JIRA_MESSAGE` | `JIRA_MESSAGE` (Jira enrichment step) |
@@ -98,6 +98,8 @@ Note: unlike earlier versions, this step no longer accepts Git metadata (`GIT_BR
 
 The step validates that you set exactly one of `JIRA_API_TOKEN`, `JIRA_SERVER_PAT`, or `JIRA_CONTEXT`, and fails with a clear message otherwise.
 
+`JIRA_CONTEXT` is the name of a Jira integration configured in your Codefresh account — the same integration `CF_ISSUE_TRACKING_INTEGRATION` referenced before the migration. The step fetches the integration using your `CF_API_KEY` and routes Jira lookups through Codefresh, so you don't need to store Jira credentials in your CI system. If you already have this integration set up, `JIRA_CONTEXT` is the smallest change; otherwise, pass the credentials directly.
+
 ### Step 3 — image-enricher-git-info
 
 | Variable | Required | Value |
@@ -116,7 +118,7 @@ The step validates that you set exactly one of `JIRA_API_TOKEN`, `JIRA_SERVER_PA
 
 ## Example 1 — GitHub Actions
 
-A complete, working workflow lives in this repository: [`.github/workflows/docker-ci.yaml`](.github/workflows/docker-ci.yaml). A `build` job builds and pushes the image, then three jobs run the CSDP steps with `docker run`.
+The workflow below has been validated end to end. A `build` job builds and pushes the image, then three jobs run the CSDP steps with `docker run`.
 
 Secrets are set in the step's `env` block and passed to the container with the `-e VAR` pass-through form, so they never appear in a command line.
 
@@ -379,7 +381,6 @@ If you followed an earlier version of this guide that used the `0.0.6` images, t
 
 ## Reference
 
-- Working example workflow: [`.github/workflows/docker-ci.yaml`](.github/workflows/docker-ci.yaml)
 - Upstream step documentation: [report-image-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/report-image-info.md) · [image-enricher-jira-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/image-enricher-jira-info.md) · [image-enricher-git-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/image-enricher-git-info.md)
 
 > Note: the upstream documentation describes `*_SECRET` and `*_SECRET_KEY` variants for credentials. Those apply to Kubernetes secrets in Argo Workflows and don't apply when you run the containers in CI. Pass the values directly as environment variables.
