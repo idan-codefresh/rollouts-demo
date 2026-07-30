@@ -74,9 +74,9 @@ jobs:
           CF_API_KEY: ${{ secrets.CF3_API }}
           CF_HOST_URL: https://g.codefresh.io
           WORKFLOW_NAME: ${{ github.workflow }}
-          # The workflows/ URL path takes the workflow FILE name - github.workflow
-          # expands to the workflow's display name, which breaks the link.
-          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/docker-ci.yaml
+          # Point at this specific run (not the workflow's runs list) so the
+          # link in Codefresh lands on the exact execution that reported the image.
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           LOGS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
