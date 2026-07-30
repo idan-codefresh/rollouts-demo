@@ -1,7 +1,13 @@
 name: docker-ci-csdp-legacy
 
-# Builds the image, then reports/enriches it in Codefresh using the legacy
-# CSDP argo-hub steps (0.0.6) run as containers — NOT the codefresh-report-image action.
+# Builds the image, then reports/enriches it in Codefresh using the standalone
+# CSDP argo-hub step images (1.1.30) — NOT the codefresh-report-image action.
+#
+# The 1.1.30 images are distroless (no shell), so they can NOT be used as job
+# containers (`container:`) — GitHub Actions needs `sh` inside the image to run
+# steps. Each step instead invokes the image with `docker run`, relying on the
+# image's default entrypoint (node /app/src/index.js). Secrets are passed with
+# `-e VAR` pass-through from the step env so they never appear in the command line.
 #
 # Required repository secrets:
 #   DOCKERHUB_USERNAME  - Docker Hub user (also the image namespace) [existing]
@@ -55,85 +61,75 @@ jobs:
             --tag "$IMAGE"
           docker push "$IMAGE"
 
-  # Step 1 - create the image entity in Codefresh and report Docker + Git info.
-  # Normally uses a runtime-issued token; here CF3_API serves both roles.
+  # Step 1 - create the image entity in Codefresh and report Docker info.
+  # 1.1.30 no longer accepts GIT_* metadata here - git data is entirely the
+  # git enricher's job now.
   csdp-report-image-info:
     runs-on: ubuntu-latest
     needs: [build]
-    container:
-      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-report-image-info:main
-    env:
-      IMAGE_URI: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
-      CF_API_KEY: ${{ secrets.CF3_API }}
-      CF_HOST: https://g.codefresh.io
-      GIT_BRANCH: ${{ github.ref_name }}
-      GIT_REVISION: ${{ github.sha }}
-      GIT_COMMIT_MESSAGE: ${{ github.event.head_commit.message || github.event.pull_request.title }}
-      GIT_COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-      GIT_SENDER_LOGIN: ${{ github.actor }}
-      WORKFLOW_NAME: ${{ github.workflow }}
-      WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/${{ github.workflow }}
-      LOGS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: report image info
-        working-directory: /usr/src/app
+        env:
+          IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
+          CF_API_KEY: ${{ secrets.CF3_API }}
+          CF_HOST_URL: https://g.codefresh.io
+          WORKFLOW_NAME: ${{ github.workflow }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/${{ github.workflow }}
+          LOGS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          # On pull_request, ref_name is "<pr-number>/merge" - use the real branch.
-          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
-            export "GIT_BRANCH=${{ github.head_ref }}"
-          else
-            export "GIT_BRANCH=${{ github.ref_name }}"
-          fi
-          node /usr/src/app/index.js
+          docker run --rm \
+            -e IMAGE_NAME -e CF_API_KEY -e CF_HOST_URL \
+            -e WORKFLOW_NAME -e WORKFLOW_URL -e LOGS_URL \
+            -e DOCKERHUB_USERNAME -e DOCKERHUB_PASSWORD \
+            quay.io/codefreshplugins/argo-hub-codefresh-csdp-report-image-info:1.1.30
 
   # Step 2 - annotate the image entity with Jira issue data.
+  # 1.1.30 uses jira.js instead of jira-connector - the GET-with-empty-body
+  # CloudFront 403 bug is gone, so no library patch is needed anymore.
   csdp-image-enricher-jira-info:
     runs-on: ubuntu-latest
     needs: [build, csdp-report-image-info]
-    container:
-      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-jira-info:main
-    env:
-      IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
-      CF_API_KEY: ${{ secrets.CF3_API }}
-      MESSAGE: ${{ github.ref_name }}
-      JIRA_PROJECT_PREFIX: 'CR'
-      JIRA_HOST: ${{ secrets.JIRA_HOST }}
-      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
-      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-      FAIL_ON_NOT_FOUND: 'false'
     steps:
       - name: enrich image with jira info
-        working-directory: /app/
+        env:
+          IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
+          CF_API_KEY: ${{ secrets.CF3_API }}
+          # Scan the PR branch name for the CR-<number> issue key.
+          JIRA_MESSAGE: ${{ github.head_ref }}
+          JIRA_PROJECT_PREFIX: 'CR'
+          # 1.1.30 validates JIRA_HOST_URL as a URI - the protocol is required.
+          JIRA_HOST_URL: https://${{ secrets.JIRA_HOST }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          FAIL_ON_NOT_FOUND: 'false'
         run: |
-          # jira-connector sends GET requests with an empty JSON body ('{}'),
-          # which Atlassian's CloudFront rejects with 403 "Bad request".
-          # Patch its makeRequest to strip the body from GETs.
-          sed -i "s|this.makeRequest = function (options, callback, successString) {|this.makeRequest = function (options, callback, successString) { if (options.method === 'GET') { delete options.body; }|" /app/node_modules/jira-connector/index.js
-          # Scan the real branch name for the CR-<number> issue key.
-          if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
-            export "MESSAGE=${{ github.head_ref }}"
-          else
-            export "MESSAGE=${{ github.ref_name }}"
-          fi
-          node /app/src/index.js
+          docker run --rm \
+            -e IMAGE_NAME -e CF_API_KEY \
+            -e JIRA_MESSAGE -e JIRA_PROJECT_PREFIX -e JIRA_HOST_URL \
+            -e JIRA_EMAIL -e JIRA_API_TOKEN \
+            -e FAIL_ON_NOT_FOUND \
+            quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-jira-info:1.1.30
 
   # Step 3 - annotate the image entity with PR/commit/committer data.
   # Runs in parallel with step 2.
   csdp-image-enricher-github-info:
     runs-on: ubuntu-latest
     needs: [build, csdp-report-image-info]
-    container:
-      image: quay.io/codefreshplugins/argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-image-enricher-git-info:main
-    env:
-      IMAGE_SHA: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
-      CF_API_KEY: ${{ secrets.CF3_API }}
-      BRANCH: ${{ github.head_ref }}
-      REPO: ${{ github.repository }}
-      GITHUB_TOKEN: ${{ github.token }}
-      GIT_SENDER_LOGIN: ${{ github.actor }}
     steps:
       - name: enrich image with github info
-        working-directory: /app/
-        run: node /app/src/index.js
+        env:
+          IMAGE_NAME: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:${{ needs.build.outputs.version }}
+          CF_API_KEY: ${{ secrets.CF3_API }}
+          # New required input in 1.1.30 (also supports gitlab, bitbucket,
+          # bitbucket-server, gerrit).
+          GIT_PROVIDER: github
+          BRANCH: ${{ github.head_ref }}
+          REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          docker run --rm \
+            -e IMAGE_NAME -e CF_API_KEY \
+            -e GIT_PROVIDER -e BRANCH -e REPO -e GITHUB_TOKEN \
+            quay.io/codefreshplugins/argo-hub-codefresh-csdp-image-enricher-git-info:1.1.30
