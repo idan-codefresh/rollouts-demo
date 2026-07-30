@@ -356,29 +356,6 @@ pipeline {
 | `401` or authentication errors from Codefresh | An invalid or wrong-account `CF_API_KEY` | Regenerate the key in [User settings](https://g.codefresh.io/user/settings) |
 | Registry errors from the report step | Missing or invalid registry credentials | Provide one complete credential set (see the step 1 table) |
 
-## Upgrading from the 0.0.6 images
-
-If you followed an earlier version of this guide that used the `0.0.6` images, three things changed:
-
-1. **New image names and tags.** Use `quay.io/codefreshplugins/argo-hub-codefresh-csdp-<step>:1.1.30` instead of the `argo-hub-workflows-codefresh-csdp-versions-0.0.6-images-<step>:main` naming.
-2. **No more Jira client patch.** The 1.1.30 Jira step replaced its Jira client library, which fixes the bug where Atlassian's CDN rejected requests with a `403` error. Remove the `sed` workaround from your pipeline.
-3. **Renamed variables.** Update these environment variables:
-
-| Step | 0.0.6 name | 1.1.30 name |
-| --- | --- | --- |
-| Report | `IMAGE_URI` | `IMAGE_NAME` |
-| Report | `CF_HOST` | `CF_HOST_URL` (now optional) |
-| Report | `DOCKER_USERNAME` / `DOCKER_PASSWORD` | `DOCKERHUB_USERNAME` / `DOCKERHUB_PASSWORD` |
-| Report | `DOMAIN` / `USERNAME` / `PASSWORD` / `INSECURE` | `REGISTRY_DOMAIN` / `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` / `REGISTRY_INSECURE` |
-| Report | `GIT_BRANCH`, `GIT_REVISION`, `GIT_COMMIT_MESSAGE`, `GIT_COMMIT_URL`, `GIT_SENDER_LOGIN` | Removed — use the Git enrichment step |
-| Jira | `IMAGE` | `IMAGE_NAME` |
-| Jira | `MESSAGE` | `JIRA_MESSAGE` |
-| Jira | `JIRA_HOST` (bare hostname) | `JIRA_HOST_URL` (full URL with `https://`) |
-| Git | `IMAGE_SHA` | `IMAGE_NAME` |
-| Git | — | `GIT_PROVIDER` (new, required) |
-| Git | `GITHUB_API` | `GITHUB_API_HOST_URL` |
-| Git | `GIT_PROVIDER_NAME` | `GITHUB_CONTEXT` |
-
 ## Reference
 
 - Upstream step documentation: [report-image-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/report-image-info.md) · [image-enricher-jira-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/image-enricher-jira-info.md) · [image-enricher-git-info](https://github.com/codefresh-io/argo-hub/blob/main/workflows/codefresh-csdp/versions/1.1.30/docs/image-enricher-git-info.md)
