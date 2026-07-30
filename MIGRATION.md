@@ -200,10 +200,19 @@ version: "1.0"
 stages: [build, report, enrich]
 
 steps:
+  clone:
+    title: Cloning repository
+    type: git-clone
+    stage: build
+    repo: myorg/my-app
+    revision: ${{CF_BRANCH}}
+    git: github                   # your Git integration
+
   build_image:
     title: Build & push
     type: build
     stage: build
+    working_directory: ${{clone}}
     image_name: myuser/my-app
     tag: ${{CF_SHORT_REVISION}}
     registry: docker-hub          # your registry integration for pushing
@@ -217,6 +226,11 @@ steps:
       - CF_API_KEY=${{CF_API_KEY}}
       - DOCKERHUB_USERNAME=${{DOCKERHUB_USERNAME}}
       - DOCKERHUB_PASSWORD=${{DOCKERHUB_TOKEN}}
+      - WORKFLOW_NAME=${{CF_PIPELINE_NAME}}
+      # Link to this specific build so the link in Codefresh lands on the
+      # exact execution that reported the image.
+      - WORKFLOW_URL=https://g.codefresh.io/build/${{CF_BUILD_ID}}
+      - LOGS_URL=https://g.codefresh.io/build/${{CF_BUILD_ID}}
 
   enrich_jira:
     title: Enrich with Jira issue
