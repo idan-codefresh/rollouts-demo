@@ -363,9 +363,9 @@ pipeline {
 | --- | --- | --- |
 | `exec: "sh": executable file not found in $PATH` | The image is running as a job container, a freestyle step with `commands`, or a Jenkins `inside` block | Run the image with `docker run` and its default entrypoint (rule 1) |
 | `ValidationError: "IMAGE_NAME" is required` (or any other variable) | The environment variable arrived empty | Check how the value reaches the step — in GitHub Actions, see rule 4 |
-| `ValidationError: "JIRA_HOST_URL" must be a valid uri` | The protocol is missing | Include `https://` (rule 3) |
+| `ValidationError: "JIRA_HOST_URL" must be a valid uri` | The protocol is missing, or the value is wrapped in quotes — in a Codefresh `environment:` list, everything after `=` is taken verbatim, so quotes become part of the value | Include `https://` (rule 3) and remove any quotes around the value |
 | `ValidationError` mentioning `JIRA_CONTEXT`, `JIRA_API_TOKEN`, and `JIRA_SERVER_PAT` | More than one, or none, of the Jira authentication methods is set | Set exactly one method (see the step 2 table) |
-| The Jira step succeeds but no issue appears on the image | `JIRA_MESSAGE` doesn't contain `<PREFIX>-<number>`, and `FAIL_ON_NOT_FOUND` is `false` | Pass a branch name or commit message containing the issue key, for example `CR-1234-my-fix`. Check the logs for `detected issues` (rule 5) |
+| The Jira step succeeds but no issue appears on the image | `JIRA_MESSAGE` doesn't contain `<PREFIX>-<number>`, or `JIRA_PROJECT_PREFIX` has stray quotes around it, and `FAIL_ON_NOT_FOUND` is `false` | Pass a branch name or commit message containing the issue key, for example `CR-1234-my-fix`, and remove any quotes around the prefix. Check the logs for `detected issues` (rule 5) |
 | `The image you are trying to enrich ... does not exist` | The image URI differs between steps | Make the URI identical everywhere (rule 2) |
 | `401` or authentication errors from Codefresh | An invalid or wrong-account `CF_API_KEY` | Regenerate the key in [User settings](https://g.codefresh.io/user/settings) |
 | Registry errors from the report step | Missing or invalid registry credentials | Provide one complete credential set (see the step 1 table) |
